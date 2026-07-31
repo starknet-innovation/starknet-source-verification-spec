@@ -24,6 +24,29 @@ separately from the verification result.
 The subject is a class hash rather than an address. Several contracts can use
 the same class, but each chain still needs its own declaration evidence.
 
+## How Starknet differs from EVM verification
+
+This is not an attempt to squeeze Starknet into an EVM-shaped record.
+
+In the [Verifier Alliance model](https://verifieralliance.org/docs/database-schema/),
+a verification normally connects compiled EVM code to a deployed contract
+address. The model also has transformations for cases such as linked libraries,
+immutables, and constructor values.
+
+For the Sierra-era Starknet flow, the important identity is different. A
+[`DECLARE` transaction](https://docs.starknet.io/learn/cheatsheets/transactions-reference)
+publishes a class, and a contract address later points to that class. The
+[Starknet class trie](https://docs.starknet.io/learn/protocol/state) maps a
+class hash to its compiled-class hash. The source is first compiled to
+[Sierra](https://docs.starknet.io/build/starknet-by-example/advanced/sierra-ir),
+then Sierra is compiled to CASM for execution.
+
+That is why this draft makes the class declaration, not the address, the core
+subject. One verified class can serve many contracts, but the declaration and
+finality evidence still have to be checked for each chain. The core record
+proves source to Sierra class hash; a Sierra-to-CASM proof is a separate
+optional extension.
+
 ## Why this is separate from Starkscan
 
 Starkscan is the first implementation, but this repository is not a Starkscan
@@ -31,10 +54,11 @@ database, API, controller protocol, or deployment package. Other Starknet
 explorers and verifiers should be able to use the format without adopting
 Starkscan's infrastructure.
 
-The design is inspired in part by the [Verifier
-Alliance](https://verifieralliance.org/), especially its effort to make
-verification data easier to share across providers. The Alliance mapping here
-is a proposal for discussion, not an official Alliance format or endorsement.
+The design is inspired in part by the [Verifier Alliance's shared verification
+database](https://verifieralliance.org/), especially its effort to make
+verification data easier to share across providers. The [Alliance mapping in
+this repository](mappings/verifier-alliance-v2.md) is a proposal for
+discussion, not an official Alliance format or endorsement.
 
 ## Try it
 
