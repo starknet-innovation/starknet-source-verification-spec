@@ -1,0 +1,17 @@
+{
+  "schema": "org.starknet.source-verification.lifecycle-event",
+  "schemaVersion": "0.1.0-draft",
+  "eventId": "urn:starknet-source-verification-event:sha256:f564b1a855fb6bb99d11cf86f19b8129e42e17fc266d13feb8c9134987eeccc7",
+  "eventDigest": "sha256:f564b1a855fb6bb99d11cf86f19b8129e42e17fc266d13feb8c9134987eeccc7",
+  "event": {
+    "subjectEvidenceDigest": "sha256:67ad35c7c674b5baf905f6adcb68be10c0b22ecd7eee25893bf5f31ae6154dfc",
+    "action": "revoke",
+    "issuer": {
+      "name": "Example Cairo Verifier",
+      "policyDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "reasonCode": "evidence_tampered",
+    "effectiveAt": "2026-03-01T12:00:00Z",
+    "notesDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+  }
+}

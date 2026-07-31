@@ -14,12 +14,18 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "fixtures"
-SCHEMA = ROOT / "schemas" / "verification-evidence-v0.schema.json"
+SCHEMAS = (
+    ROOT / "schemas" / "verification-evidence-v0.schema.json",
+    ROOT / "schemas" / "lifecycle-event-v0.schema.json",
+)
 
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 FELT_RE = re.compile(r"^0x[0-9a-f]{64}$")
 RECORD_ID_RE = re.compile(
     r"^urn:starknet-source-verification:sha256:([0-9a-f]{64})$"
+)
+EVENT_ID_RE = re.compile(
+    r"^urn:starknet-source-verification-event:sha256:([0-9a-f]{64})$"
 )
 TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$")
@@ -36,6 +42,8 @@ EXPECTED_INVALID_ERRORS = {
     "duplicate-key.json": "duplicate JSON key",
     "exact-match-wrong-hash.json": "must equal subject.classHash",
     "missing-lockfile-digest.json": "missing keys: scarbLockDigest",
+    "revoke-with-replacement.json": "must not include replacementEvidenceDigest",
+    "tampered-lifecycle-digest.json": "expected sha256:",
     "uppercase-class-hash.json": "exactly 64 lowercase hex digits",
 }
 
@@ -387,8 +395,90 @@ def validate_record(value: Any) -> None:
         fail("$.timing.completedAt", "must not precede startedAt")
 
 
+def validate_lifecycle_record(value: Any) -> None:
+    record = require_object(
+        value,
+        "$",
+        {"schema", "schemaVersion", "eventId", "eventDigest", "event"},
+        set(),
+    )
+    require_enum(
+        record["schema"],
+        "$.schema",
+        {"org.starknet.source-verification.lifecycle-event"},
+    )
+    require_enum(record["schemaVersion"], "$.schemaVersion", {"0.1.0-draft"})
+    event = require_object(
+        record["event"],
+        "$.event",
+        {"subjectEvidenceDigest", "action", "issuer", "reasonCode", "effectiveAt"},
+        {"replacementEvidenceDigest", "notesDigest"},
+    )
+    subject_digest = require_digest(
+        event["subjectEvidenceDigest"], "$.event.subjectEvidenceDigest"
+    )
+    action = require_enum(event["action"], "$.event.action", {"revoke", "supersede"})
+    issuer = require_object(
+        event["issuer"], "$.event.issuer", {"name", "policyDigest"}, set()
+    )
+    issuer_name = require_string(issuer["name"], "$.event.issuer.name", maximum=128)
+    if not NAME_RE.fullmatch(issuer_name):
+        fail("$.event.issuer.name", "contains unsupported characters")
+    require_digest(issuer["policyDigest"], "$.event.issuer.policyDigest")
+    require_enum(
+        event["reasonCode"],
+        "$.event.reasonCode",
+        {
+            "policy_error",
+            "source_withdrawn",
+            "evidence_tampered",
+            "toolchain_compromised",
+            "superseded_by_stronger_evidence",
+            "legal_restriction",
+            "administrative_correction",
+        },
+    )
+    require_timestamp(event["effectiveAt"], "$.event.effectiveAt")
+    replacement = event.get("replacementEvidenceDigest")
+    if action == "revoke" and replacement is not None:
+        fail("$.event", "revoke must not include replacementEvidenceDigest")
+    if action == "supersede" and replacement is None:
+        fail("$.event", "supersede must include replacementEvidenceDigest")
+    if replacement is not None:
+        replacement_digest = require_digest(
+            replacement, "$.event.replacementEvidenceDigest"
+        )
+        if replacement_digest == subject_digest:
+            fail("$.event.replacementEvidenceDigest", "must not reference itself")
+    if "notesDigest" in event:
+        require_digest(event["notesDigest"], "$.event.notesDigest")
+
+    calculated = "sha256:" + hashlib.sha256(canonical_json(event)).hexdigest()
+    claimed = require_digest(record["eventDigest"], "$.eventDigest")
+    if claimed != calculated:
+        fail("$.eventDigest", f"expected {calculated}")
+    event_id = require_string(record["eventId"], "$.eventId", maximum=113)
+    match = EVENT_ID_RE.fullmatch(event_id)
+    if not match or f"sha256:{match.group(1)}" != calculated:
+        fail("$.eventId", "must be the lifecycle URN form of eventDigest")
+
+
+def validate_any_record(value: Any) -> None:
+    if not isinstance(value, dict):
+        fail("$", "must be an object")
+    schema = value.get("schema")
+    if schema == "org.starknet.source-verification.evidence":
+        validate_record(value)
+        return
+    if schema == "org.starknet.source-verification.lifecycle-event":
+        validate_lifecycle_record(value)
+        return
+    fail("$.schema", "unknown record schema")
+
+
 def main() -> int:
-    load_json(SCHEMA)
+    for schema in SCHEMAS:
+        load_json(schema)
     valid = sorted(path for path in FIXTURES.glob("*.json") if path.is_file())
     invalid = sorted((FIXTURES / "invalid").glob("*.json"))
     if not valid or not invalid:
@@ -396,7 +486,7 @@ def main() -> int:
         return 1
     for path in valid:
         try:
-            validate_record(load_json(path))
+            validate_any_record(load_json(path))
         except (ValidationError, ValueError) as error:
             print(f"FAIL valid fixture {path.relative_to(ROOT)}: {error}", file=sys.stderr)
             return 1
@@ -406,7 +496,7 @@ def main() -> int:
         return 1
     for path in invalid:
         try:
-            validate_record(load_json(path))
+            validate_any_record(load_json(path))
         except (ValidationError, ValueError) as error:
             expected = EXPECTED_INVALID_ERRORS[path.name]
             if expected not in str(error):

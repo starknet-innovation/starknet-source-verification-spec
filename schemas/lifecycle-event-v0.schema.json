@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.starknet.org/source-verification/lifecycle-event-v0.schema.json",
+  "title": "Starknet source-verification lifecycle event v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "eventId",
+    "eventDigest",
+    "event"
+  ],
+  "properties": {
+    "schema": {
+      "const": "org.starknet.source-verification.lifecycle-event"
+    },
+    "schemaVersion": {
+      "const": "0.1.0-draft"
+    },
+    "eventId": {
+      "type": "string",
+      "pattern": "^urn:starknet-source-verification-event:sha256:[0-9a-f]{64}$"
+    },
+    "eventDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subjectEvidenceDigest",
+        "action",
+        "issuer",
+        "reasonCode",
+        "effectiveAt"
+      ],
+      "properties": {
+        "subjectEvidenceDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "action": {
+          "enum": ["revoke", "supersede"]
+        },
+        "issuer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "policyDigest"],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._/-]*$"
+            },
+            "policyDigest": {
+              "$ref": "#/$defs/digest"
+            }
+          }
+        },
+        "reasonCode": {
+          "enum": [
+            "policy_error",
+            "source_withdrawn",
+            "evidence_tampered",
+            "toolchain_compromised",
+            "superseded_by_stronger_evidence",
+            "legal_restriction",
+            "administrative_correction"
+          ]
+        },
+        "effectiveAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "replacementEvidenceDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "notesDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    }
+  }
+}
+

@@ -1,0 +1,17 @@
+{
+  "schema": "org.starknet.source-verification.lifecycle-event",
+  "schemaVersion": "0.1.0-draft",
+  "eventId": "urn:starknet-source-verification-event:sha256:c75427c09bcf0945fc295606e0f0def73751dffaac8af94c4f67a721601a6686",
+  "eventDigest": "sha256:c75427c09bcf0945fc295606e0f0def73751dffaac8af94c4f67a721601a6686",
+  "event": {
+    "subjectEvidenceDigest": "sha256:67ad35c7c674b5baf905f6adcb68be10c0b22ecd7eee25893bf5f31ae6154dfc",
+    "action": "supersede",
+    "issuer": {
+      "name": "Example Cairo Verifier",
+      "policyDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "reasonCode": "superseded_by_stronger_evidence",
+    "effectiveAt": "2026-04-01T12:00:00Z",
+    "replacementEvidenceDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  }
+}
