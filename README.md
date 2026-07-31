@@ -33,8 +33,8 @@ a verification normally connects compiled EVM code to a deployed contract
 address. The model also has transformations for cases such as linked libraries,
 immutables, and constructor values.
 
-For the Sierra-era Starknet flow, the important identity is different. A
-[`DECLARE` transaction](https://docs.starknet.io/learn/cheatsheets/transactions-reference)
+For Starknet's Sierra-based contract model, the important identity is
+different: a [`DECLARE` transaction](https://docs.starknet.io/learn/cheatsheets/transactions-reference)
 publishes a class, and a contract address later points to that class. The
 [Starknet class trie](https://docs.starknet.io/learn/protocol/state) maps a
 class hash to its compiled-class hash. The source is first compiled to
