@@ -40,6 +40,11 @@ recomputes deterministic evidence identities, and rejects duplicate JSON keys.
 Canonical identity and source-tree hashing are defined normatively in
 [`docs/canonicalization.md`](docs/canonicalization.md).
 
+An optional Sierra-to-CASM proof extension is documented in
+[`docs/extensions/sierra-to-casm.md`](docs/extensions/sierra-to-casm.md). It
+adds a separate compiled-class guarantee without changing the core source
+match decision.
+
 ## Layout
 
 ```text
