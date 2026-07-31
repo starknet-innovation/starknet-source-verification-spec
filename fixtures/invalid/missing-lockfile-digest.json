@@ -1,0 +1,66 @@
+{
+  "schema": "org.starknet.source-verification.evidence",
+  "schemaVersion": "0.1.0-draft",
+  "recordId": "urn:starknet-source-verification:sha256:67ad35c7c674b5baf905f6adcb68be10c0b22ecd7eee25893bf5f31ae6154dfc",
+  "evidenceDigest": "sha256:67ad35c7c674b5baf905f6adcb68be10c0b22ecd7eee25893bf5f31ae6154dfc",
+  "evidence": {
+    "verifier": {
+      "name": "Example Cairo Verifier",
+      "policy": {
+        "name": "offline-exact-v1",
+        "version": "1.0.0",
+        "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      }
+    },
+    "subject": {
+      "classHash": "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "submissionChainId": "SN_MAIN",
+      "declarationEvidence": {
+        "chainId": "SN_MAIN",
+        "finality": "accepted_on_l1",
+        "blockNumber": 123456,
+        "transactionHash": "0x023456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0",
+        "sourceType": "starknet_json_rpc",
+        "responseDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      "contractReferences": [
+        "0x03456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef01"
+      ]
+    },
+    "source": {
+      "bundleDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "treeDigest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "scarbManifestDigest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "materialManifestDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "visibility": "public",
+      "retention": "retained_public",
+      "redistribution": "allowed",
+      "license": "Apache-2.0"
+    },
+    "build": {
+      "package": "example_account",
+      "target": "example_account",
+      "profile": "release",
+      "artifact": "target/dev/example_account.contract_class.json",
+      "module": "example_account::ExampleAccount",
+      "toolchain": {
+        "scarbVersion": "2.10.1",
+        "cairoVersion": "2.10.1",
+        "sierraVersion": "1.7.0",
+        "compilerDigest": "sha256:8888888888888888888888888888888888888888888888888888888888888888"
+      },
+      "environmentDigest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "buildLogDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "producedClassHash": "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    },
+    "outcome": {
+      "status": "exact_match",
+      "reasonCode": "class_hash_equal",
+      "receiptEligible": true
+    }
+  },
+  "timing": {
+    "startedAt": "2026-01-01T00:00:00Z",
+    "completedAt": "2026-01-01T00:00:07Z"
+  }
+}

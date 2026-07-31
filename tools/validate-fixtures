@@ -1,0 +1,427 @@
+#!/usr/bin/env python3
+"""Validate the draft Starknet source-verification conformance corpus."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+import sys
+import unicodedata
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+FIXTURES = ROOT / "fixtures"
+SCHEMA = ROOT / "schemas" / "verification-evidence-v0.schema.json"
+
+DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+FELT_RE = re.compile(r"^0x[0-9a-f]{64}$")
+RECORD_ID_RE = re.compile(
+    r"^urn:starknet-source-verification:sha256:([0-9a-f]{64})$"
+)
+TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$")
+NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._/-]*$")
+SELECTOR_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
+MODULE_RE = re.compile(r"^[A-Za-z0-9_]+(?:::[A-Za-z0-9_]+)*$")
+LICENSE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._+:/()-]*$")
+RELATIVE_PATH_RE = re.compile(
+    r"^(?!/)(?!.*(?:^|/)\.\.(?:/|$))(?!.*//)[A-Za-z0-9._+/-]+$"
+)
+FELT_PRIME = 2**251 + 17 * 2**192 + 1
+EXPECTED_INVALID_ERRORS = {
+    "ambiguous-target.json": "must be one unambiguous selector",
+    "duplicate-key.json": "duplicate JSON key",
+    "exact-match-wrong-hash.json": "must equal subject.classHash",
+    "missing-lockfile-digest.json": "missing keys: scarbLockDigest",
+    "uppercase-class-hash.json": "exactly 64 lowercase hex digits",
+}
+
+
+class ValidationError(ValueError):
+    pass
+
+
+def fail(path: str, message: str) -> None:
+    raise ValidationError(f"{path}: {message}")
+
+
+def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValidationError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def load_json(path: Path) -> Any:
+    return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=reject_duplicate_keys)
+
+
+def canonical_json(value: Any) -> bytes:
+    validate_jcs_profile(value, "$.evidence")
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def validate_jcs_profile(value: Any, path: str) -> None:
+    if value is None or isinstance(value, bool):
+        return
+    if isinstance(value, int):
+        if not -(2**53 - 1) <= value <= 2**53 - 1:
+            fail(path, "integer is outside the I-JSON safe range")
+        return
+    if isinstance(value, float):
+        fail(path, "floating-point values are forbidden by the V0 JCS profile")
+    if isinstance(value, str):
+        if unicodedata.normalize("NFC", value) != value:
+            fail(path, "string must be Unicode NFC")
+        if any(ord(character) < 0x20 for character in value):
+            fail(path, "string contains a C0 control character")
+        return
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            validate_jcs_profile(item, f"{path}[{index}]")
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            validate_jcs_profile(key, f"{path}.<key>")
+            validate_jcs_profile(item, f"{path}.{key}")
+        return
+    fail(path, f"unsupported JSON value type: {type(value).__name__}")
+
+
+def evidence_digest(evidence: dict[str, Any]) -> str:
+    return "sha256:" + hashlib.sha256(canonical_json(evidence)).hexdigest()
+
+
+def require_object(value: Any, path: str, required: set[str], optional: set[str]) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        fail(path, "must be an object")
+    keys = set(value)
+    missing = required - keys
+    unknown = keys - required - optional
+    if missing:
+        fail(path, f"missing keys: {', '.join(sorted(missing))}")
+    if unknown:
+        fail(path, f"unknown keys: {', '.join(sorted(unknown))}")
+    return value
+
+
+def require_string(value: Any, path: str, *, minimum: int = 1, maximum: int = 512) -> str:
+    if not isinstance(value, str) or not minimum <= len(value) <= maximum:
+        fail(path, f"must be a string of {minimum}..{maximum} characters")
+    return value
+
+
+def require_enum(value: Any, path: str, choices: set[str]) -> str:
+    text = require_string(value, path)
+    if text not in choices:
+        fail(path, f"must be one of: {', '.join(sorted(choices))}")
+    return text
+
+
+def require_digest(value: Any, path: str) -> str:
+    text = require_string(value, path, maximum=71)
+    if not DIGEST_RE.fullmatch(text):
+        fail(path, "must use sha256:<64 lowercase hex>")
+    return text
+
+
+def require_felt(value: Any, path: str) -> str:
+    text = require_string(value, path, maximum=66)
+    if not FELT_RE.fullmatch(text):
+        fail(path, "must use 0x plus exactly 64 lowercase hex digits")
+    if int(text[2:], 16) >= FELT_PRIME:
+        fail(path, "must be smaller than the Starknet field prime")
+    return text
+
+
+def require_timestamp(value: Any, path: str) -> datetime:
+    text = require_string(value, path, maximum=20)
+    if not TIMESTAMP_RE.fullmatch(text):
+        fail(path, "must use UTC YYYY-MM-DDTHH:MM:SSZ")
+    try:
+        return datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError as error:
+        fail(path, f"invalid timestamp: {error}")
+
+
+def validate_declaration(value: Any, path: str, submission_chain: str) -> None:
+    obj = require_object(
+        value,
+        path,
+        {"chainId", "finality", "blockNumber", "transactionHash", "sourceType", "responseDigest"},
+        set(),
+    )
+    chain_id = require_enum(obj["chainId"], f"{path}.chainId", {"SN_MAIN", "SN_SEPOLIA"})
+    if chain_id != submission_chain:
+        fail(f"{path}.chainId", "must equal submissionChainId")
+    require_enum(obj["finality"], f"{path}.finality", {"accepted_on_l1"})
+    block = obj["blockNumber"]
+    if isinstance(block, bool) or not isinstance(block, int) or not 0 <= block <= 2**53 - 1:
+        fail(f"{path}.blockNumber", "must be a non-negative safe integer")
+    require_felt(obj["transactionHash"], f"{path}.transactionHash")
+    require_enum(
+        obj["sourceType"],
+        f"{path}.sourceType",
+        {"starknet_json_rpc", "starknet_state_archive"},
+    )
+    require_digest(obj["responseDigest"], f"{path}.responseDigest")
+
+
+def validate_evidence(evidence: Any) -> dict[str, Any]:
+    root = require_object(
+        evidence,
+        "evidence",
+        {"verifier", "subject", "source", "build", "outcome"},
+        {"extensions"},
+    )
+
+    verifier = require_object(root["verifier"], "evidence.verifier", {"name", "policy"}, set())
+    verifier_name = require_string(verifier["name"], "evidence.verifier.name", maximum=128)
+    if not NAME_RE.fullmatch(verifier_name):
+        fail("evidence.verifier.name", "contains unsupported characters")
+    policy = require_object(
+        verifier["policy"],
+        "evidence.verifier.policy",
+        {"name", "version", "digest"},
+        set(),
+    )
+    policy_name = require_string(policy["name"], "evidence.verifier.policy.name", maximum=128)
+    if not NAME_RE.fullmatch(policy_name):
+        fail("evidence.verifier.policy.name", "contains unsupported characters")
+    policy_version = require_string(policy["version"], "evidence.verifier.policy.version", maximum=64)
+    if not re.fullmatch(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$", policy_version):
+        fail("evidence.verifier.policy.version", "contains unsupported characters")
+    require_digest(policy["digest"], "evidence.verifier.policy.digest")
+
+    subject = require_object(
+        root["subject"],
+        "evidence.subject",
+        {"classHash", "submissionChainId", "declarationEvidence"},
+        {"contractReferences"},
+    )
+    selected_hash = require_felt(subject["classHash"], "evidence.subject.classHash")
+    submission_chain = require_enum(
+        subject["submissionChainId"],
+        "evidence.subject.submissionChainId",
+        {"SN_MAIN", "SN_SEPOLIA"},
+    )
+    validate_declaration(subject["declarationEvidence"], "evidence.subject.declarationEvidence", submission_chain)
+    references = subject.get("contractReferences", [])
+    if not isinstance(references, list) or len(references) > 64:
+        fail("evidence.subject.contractReferences", "must be an array with at most 64 entries")
+    normalized_references = [require_felt(item, f"evidence.subject.contractReferences[{index}]") for index, item in enumerate(references)]
+    if len(normalized_references) != len(set(normalized_references)):
+        fail("evidence.subject.contractReferences", "must not contain duplicates")
+
+    source = require_object(
+        root["source"],
+        "evidence.source",
+        {
+            "bundleDigest",
+            "treeDigest",
+            "scarbManifestDigest",
+            "scarbLockDigest",
+            "materialManifestDigest",
+            "visibility",
+            "retention",
+            "redistribution",
+        },
+        {"license"},
+    )
+    for field in (
+        "bundleDigest",
+        "treeDigest",
+        "scarbManifestDigest",
+        "scarbLockDigest",
+        "materialManifestDigest",
+    ):
+        require_digest(source[field], f"evidence.source.{field}")
+    require_enum(source["visibility"], "evidence.source.visibility", {"public", "private", "restricted", "unknown"})
+    require_enum(
+        source["retention"],
+        "evidence.source.retention",
+        {"digest_only", "retained_private", "retained_public", "not_retained"},
+    )
+    redistribution = require_enum(
+        source["redistribution"],
+        "evidence.source.redistribution",
+        {"allowed", "not_allowed", "unknown"},
+    )
+    if redistribution == "allowed" and "license" not in source:
+        fail("evidence.source.license", "is required when redistribution is allowed")
+    if "license" in source:
+        license_name = require_string(source["license"], "evidence.source.license", maximum=128)
+        if not LICENSE_RE.fullmatch(license_name):
+            fail("evidence.source.license", "contains unsupported characters")
+
+    build = require_object(
+        root["build"],
+        "evidence.build",
+        {
+            "package",
+            "target",
+            "profile",
+            "artifact",
+            "module",
+            "toolchain",
+            "environmentDigest",
+            "buildLogDigest",
+            "producedClassHash",
+        },
+        set(),
+    )
+    for field in ("package", "target", "profile"):
+        selector = require_string(build[field], f"evidence.build.{field}", maximum=256)
+        if not SELECTOR_RE.fullmatch(selector):
+            fail(f"evidence.build.{field}", "must be one unambiguous selector")
+    artifact = require_string(build["artifact"], "evidence.build.artifact")
+    module = require_string(build["module"], "evidence.build.module")
+    if not MODULE_RE.fullmatch(module):
+        fail("evidence.build.module", "must use a canonical Cairo module path")
+    if not RELATIVE_PATH_RE.fullmatch(artifact):
+        fail("evidence.build.artifact", "must be a normalized relative path")
+    toolchain = require_object(
+        build["toolchain"],
+        "evidence.build.toolchain",
+        {"scarbVersion", "cairoVersion", "sierraVersion", "compilerDigest"},
+        set(),
+    )
+    for field in ("scarbVersion", "cairoVersion", "sierraVersion"):
+        version = require_string(toolchain[field], f"evidence.build.toolchain.{field}", maximum=64)
+        if not VERSION_RE.fullmatch(version):
+            fail(f"evidence.build.toolchain.{field}", "must be a semantic toolchain version")
+    require_digest(toolchain["compilerDigest"], "evidence.build.toolchain.compilerDigest")
+    require_digest(build["environmentDigest"], "evidence.build.environmentDigest")
+    require_digest(build["buildLogDigest"], "evidence.build.buildLogDigest")
+    produced_hash = require_felt(build["producedClassHash"], "evidence.build.producedClassHash")
+
+    outcome = require_object(
+        root["outcome"],
+        "evidence.outcome",
+        {"status", "reasonCode", "receiptEligible"},
+        set(),
+    )
+    status = require_enum(
+        outcome["status"],
+        "evidence.outcome.status",
+        {"exact_match", "confirmed_mismatch", "rejected_input", "build_failed", "infrastructure_failed"},
+    )
+    reason = require_enum(
+        outcome["reasonCode"],
+        "evidence.outcome.reasonCode",
+        {
+            "class_hash_equal",
+            "class_hash_not_equal",
+            "invalid_evidence",
+            "policy_rejected",
+            "build_nonzero_exit",
+            "build_timeout",
+            "trusted_service_unavailable",
+            "trusted_storage_failure",
+        },
+    )
+    eligible = outcome["receiptEligible"]
+    if not isinstance(eligible, bool):
+        fail("evidence.outcome.receiptEligible", "must be boolean")
+    expected = {
+        "exact_match": ({"class_hash_equal"}, True),
+        "confirmed_mismatch": ({"class_hash_not_equal"}, False),
+        "rejected_input": ({"invalid_evidence", "policy_rejected"}, False),
+        "build_failed": ({"build_nonzero_exit", "build_timeout"}, False),
+        "infrastructure_failed": ({"trusted_service_unavailable", "trusted_storage_failure"}, False),
+    }
+    allowed_reasons, expected_eligible = expected[status]
+    if reason not in allowed_reasons:
+        fail("evidence.outcome.reasonCode", f"is inconsistent with {status}")
+    if eligible is not expected_eligible:
+        fail("evidence.outcome.receiptEligible", f"must be {expected_eligible} for {status}")
+    hashes_equal = selected_hash == produced_hash
+    if status == "exact_match" and not hashes_equal:
+        fail("evidence.build.producedClassHash", "must equal subject.classHash for exact_match")
+    if status == "confirmed_mismatch" and hashes_equal:
+        fail("evidence.build.producedClassHash", "must differ from subject.classHash for confirmed_mismatch")
+
+    extensions = root.get("extensions", {})
+    if not isinstance(extensions, dict) or len(extensions) > 32:
+        fail("evidence.extensions", "must be an object with at most 32 entries")
+    for name in extensions:
+        if not re.fullmatch(r"org\.[a-z0-9]+(?:\.[a-z0-9-]+)+", name):
+            fail(f"evidence.extensions.{name}", "must use a reverse-domain namespace")
+
+    return root
+
+
+def validate_record(value: Any) -> None:
+    record = require_object(
+        value,
+        "$",
+        {"schema", "schemaVersion", "recordId", "evidenceDigest", "evidence", "timing"},
+        set(),
+    )
+    require_enum(record["schema"], "$.schema", {"org.starknet.source-verification.evidence"})
+    require_enum(record["schemaVersion"], "$.schemaVersion", {"0.1.0-draft"})
+    evidence = validate_evidence(record["evidence"])
+    calculated = evidence_digest(evidence)
+    claimed = require_digest(record["evidenceDigest"], "$.evidenceDigest")
+    if claimed != calculated:
+        fail("$.evidenceDigest", f"expected {calculated}")
+    record_id = require_string(record["recordId"], "$.recordId", maximum=107)
+    match = RECORD_ID_RE.fullmatch(record_id)
+    if not match or f"sha256:{match.group(1)}" != calculated:
+        fail("$.recordId", "must be the URN form of evidenceDigest")
+    timing = require_object(record["timing"], "$.timing", {"startedAt", "completedAt"}, set())
+    started = require_timestamp(timing["startedAt"], "$.timing.startedAt")
+    completed = require_timestamp(timing["completedAt"], "$.timing.completedAt")
+    if completed < started:
+        fail("$.timing.completedAt", "must not precede startedAt")
+
+
+def main() -> int:
+    load_json(SCHEMA)
+    valid = sorted(path for path in FIXTURES.glob("*.json") if path.is_file())
+    invalid = sorted((FIXTURES / "invalid").glob("*.json"))
+    if not valid or not invalid:
+        print("fixture corpus must contain valid and invalid records", file=sys.stderr)
+        return 1
+    for path in valid:
+        try:
+            validate_record(load_json(path))
+        except (ValidationError, ValueError) as error:
+            print(f"FAIL valid fixture {path.relative_to(ROOT)}: {error}", file=sys.stderr)
+            return 1
+        print(f"PASS {path.relative_to(ROOT)}")
+    if set(EXPECTED_INVALID_ERRORS) != {path.name for path in invalid}:
+        print("invalid fixture expectation list does not match corpus", file=sys.stderr)
+        return 1
+    for path in invalid:
+        try:
+            validate_record(load_json(path))
+        except (ValidationError, ValueError) as error:
+            expected = EXPECTED_INVALID_ERRORS[path.name]
+            if expected not in str(error):
+                print(
+                    f"FAIL {path.relative_to(ROOT)} rejected for the wrong reason: {error}",
+                    file=sys.stderr,
+                )
+                return 1
+            print(f"PASS rejected {path.relative_to(ROOT)}")
+            continue
+        print(f"FAIL invalid fixture accepted: {path.relative_to(ROOT)}", file=sys.stderr)
+        return 1
+    print(f"validated {len(valid)} valid and rejected {len(invalid)} invalid fixtures")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

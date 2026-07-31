@@ -1,0 +1,63 @@
+{
+  "schema": "org.starknet.source-verification.evidence",
+  "schemaVersion": "0.1.0-draft",
+  "recordId": "urn:starknet-source-verification:sha256:ea96f78f26ccadad238e4d583616c1c87ce9aebb9e53aca7aa64c14a8faeb87a",
+  "evidenceDigest": "sha256:ea96f78f26ccadad238e4d583616c1c87ce9aebb9e53aca7aa64c14a8faeb87a",
+  "evidence": {
+    "verifier": {
+      "name": "Example Cairo Verifier",
+      "policy": {
+        "name": "offline-exact-v1",
+        "version": "1.0.0",
+        "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      }
+    },
+    "subject": {
+      "classHash": "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "submissionChainId": "SN_MAIN",
+      "declarationEvidence": {
+        "chainId": "SN_MAIN",
+        "finality": "accepted_on_l1",
+        "blockNumber": 123456,
+        "transactionHash": "0x023456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0",
+        "sourceType": "starknet_json_rpc",
+        "responseDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+      }
+    },
+    "source": {
+      "bundleDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "treeDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "scarbManifestDigest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "scarbLockDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+      "materialManifestDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "visibility": "private",
+      "retention": "digest_only",
+      "redistribution": "not_allowed"
+    },
+    "build": {
+      "package": "example_account",
+      "target": "example_account",
+      "profile": "release",
+      "artifact": "target/dev/example_account.contract_class.json",
+      "module": "example_account::ExampleAccount",
+      "toolchain": {
+        "scarbVersion": "2.10.1",
+        "cairoVersion": "2.10.1",
+        "sierraVersion": "1.7.0",
+        "compilerDigest": "sha256:8888888888888888888888888888888888888888888888888888888888888888"
+      },
+      "environmentDigest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "buildLogDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "producedClassHash": "0x0456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef012"
+    },
+    "outcome": {
+      "status": "confirmed_mismatch",
+      "reasonCode": "class_hash_not_equal",
+      "receiptEligible": false
+    }
+  },
+  "timing": {
+    "startedAt": "2026-01-01T00:01:00Z",
+    "completedAt": "2026-01-01T00:01:07Z"
+  }
+}
